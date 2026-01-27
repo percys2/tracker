@@ -71,7 +71,6 @@ function App() {
   const [visitas, setVisitas] = useState<VisitaConNombre[]>([])
   const [pedidos, setPedidos] = useState<PedidoConNombre[]>([])
   const [clientes, setClientes] = useState<Cliente[]>([])
-  const [loading, setLoading] = useState(true)
   const [isFetchingVendedores, setIsFetchingVendedores] = useState(false)
   const [vendedoresError, setVendedoresError] = useState<string | null>(null)
   const [isTracking, setIsTracking] = useState(false)
@@ -126,7 +125,6 @@ function App() {
             : JSON.stringify(error)
       setVendedoresError(errorMessage || 'Error al cargar vendedores')
     } finally {
-      setLoading(false)
       setIsFetchingVendedores(false)
     }
   }
@@ -327,27 +325,25 @@ function App() {
   }
 
   useEffect(() => {
-    if (!supabase) {
-      setLoading(false)
-      return
-    }
+    const client = supabase
+    if (!client) return
     fetchVendedores()
     fetchVisitas()
     fetchPedidos()
     fetchClientes()
     
-    const vendedoresChannel = supabase
+    const vendedoresChannel = client
       .channel('vendedores-changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'vendedores' }, () => {
         fetchVendedores()
       })
       .subscribe()
     
-    const ubicacionesChannel = supabase
+    const ubicacionesChannel = client
       .channel('ubicaciones-changes')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'ubicaciones' }, async (payload) => {
         const ubicacion = payload.new as any
-        await supabase
+        await client
           .from('vendedores')
           .update({ 
             latitud: ubicacion.latitud, 
@@ -368,8 +364,8 @@ function App() {
     
     return () => {
       clearInterval(interval)
-      supabase.removeChannel(vendedoresChannel)
-      supabase.removeChannel(ubicacionesChannel)
+      client.removeChannel(vendedoresChannel)
+      client.removeChannel(ubicacionesChannel)
     }
   }, [])
 
