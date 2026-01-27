@@ -1,4 +1,6 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
+import { registerPlugin, Capacitor } from '@capacitor/core'
+import type { BackgroundGeolocationPlugin } from '@capacitor-community/background-geolocation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -7,7 +9,10 @@ import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { MapPin, Plus, Trash2, RefreshCw, ClipboardList, ShoppingCart, Menu, X, UserCheck } from 'lucide-react'
-import { supabase } from '@/lib/supabase'
+import { supabase, isSupabaseConfigured } from '@/lib/supabase'
+
+const BackgroundGeolocation = registerPlugin<BackgroundGeolocationPlugin>('BackgroundGeolocation')
+const TRACKING_INTERVAL_MS = 30_000
 
 interface Vendedor {
   id: number
@@ -67,6 +72,13 @@ function App() {
   const [pedidos, setPedidos] = useState<PedidoConNombre[]>([])
   const [clientes, setClientes] = useState<Cliente[]>([])
   const [loading, setLoading] = useState(true)
+  const [isFetchingVendedores, setIsFetchingVendedores] = useState(false)
+  const [vendedoresError, setVendedoresError] = useState<string | null>(null)
+  const [isTracking, setIsTracking] = useState(false)
+  const [trackingId, setTrackingId] = useState<string | null>(null)
+  const [trackingError, setTrackingError] = useState<string | null>(null)
+  const lastSentAtRef = useRef<number>(0)
+  const webWatchIdRef = useRef<number | null>(null)
   const [activeSection, setActiveSection] = useState('clientes')
   const [sidebarOpen, setSidebarOpen] = useState(true)
   
@@ -93,6 +105,9 @@ function App() {
   })
 
   const fetchVendedores = async () => {
+    if (!supabase) return
+    setIsFetchingVendedores(true)
+    setVendedoresError(null)
     try {
       const { data, error } = await supabase
         .from('vendedores')
@@ -103,12 +118,21 @@ function App() {
       setVendedores(data || [])
     } catch (error) {
       console.error('Error fetching vendedores:', error)
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : typeof error === 'string'
+            ? error
+            : JSON.stringify(error)
+      setVendedoresError(errorMessage || 'Error al cargar vendedores')
     } finally {
       setLoading(false)
+      setIsFetchingVendedores(false)
     }
   }
   
   const fetchVisitas = async () => {
+    if (!supabase) return
     try {
       const { data, error } = await supabase
         .from('visitas')
@@ -127,6 +151,7 @@ function App() {
   }
   
   const fetchPedidos = async () => {
+    if (!supabase) return
     try {
       const { data, error } = await supabase
         .from('pedidos')
@@ -145,6 +170,7 @@ function App() {
   }
   
   const fetchClientes = async () => {
+    if (!supabase) return
     try {
       const { data, error } = await supabase
         .from('clientes')
@@ -162,7 +188,149 @@ function App() {
     }
   }
 
+  const getSelectedVendedorId = () => {
+    const id = parseInt(selectedVendedorForLocation)
+    return Number.isNaN(id) ? null : id
+  }
+
+  const insertUbicacion = async (
+    vendedorId: number,
+    latitude: number,
+    longitude: number,
+    accuracy: number | null,
+    timeMs?: number | null
+  ) => {
+    if (!supabase) return
+    const fecha = new Date(timeMs ?? Date.now()).toISOString()
+    const { error } = await supabase
+      .from('ubicaciones')
+      .insert({
+        vendedor_id: vendedorId,
+        latitud: latitude,
+        longitud: longitude,
+        precision_metros: accuracy ?? null,
+        fecha_registro: fecha
+      })
+    if (error) throw error
+  }
+
+  const recordLocationThrottled = async (
+    vendedorId: number,
+    latitude: number,
+    longitude: number,
+    accuracy: number | null,
+    timeMs?: number | null
+  ) => {
+    const now = timeMs ?? Date.now()
+    if (now - lastSentAtRef.current < TRACKING_INTERVAL_MS) return
+    lastSentAtRef.current = now
+    try {
+      await insertUbicacion(vendedorId, latitude, longitude, accuracy, timeMs ?? null)
+    } catch (error) {
+      console.error('Error saving location:', error)
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : typeof error === 'string'
+            ? error
+            : JSON.stringify(error)
+      setTrackingError(errorMessage || 'Error al guardar ubicacion')
+    }
+  }
+
+  const startTracking = async () => {
+    if (!supabase) return
+    if (isTracking) return
+    const vendedorId = getSelectedVendedorId()
+    if (!vendedorId) {
+      setTrackingError('Seleccione un vendedor valido')
+      return
+    }
+    setTrackingError(null)
+    lastSentAtRef.current = 0
+
+    if (Capacitor.isNativePlatform()) {
+      try {
+        const id = await BackgroundGeolocation.addWatcher(
+          {
+            backgroundMessage: 'Compartiendo ubicacion cada 30s.',
+            backgroundTitle: 'Rastreo activo',
+            requestPermissions: true,
+            stale: false,
+            distanceFilter: 0
+          },
+          (location, error) => {
+            if (error) {
+              console.error('Background geolocation error:', error)
+              setTrackingError(error.message || 'Error de ubicacion')
+              return
+            }
+            if (!location) return
+            void recordLocationThrottled(
+              vendedorId,
+              location.latitude,
+              location.longitude,
+              location.accuracy ?? null,
+              location.time ?? null
+            )
+          }
+        )
+        setTrackingId(id)
+        setIsTracking(true)
+      } catch (error) {
+        console.error('Error starting tracking:', error)
+        setTrackingError('No se pudo iniciar el rastreo')
+      }
+      return
+    }
+
+    if (!navigator.geolocation) {
+      setTrackingError('La geolocalizacion no esta soportada en este dispositivo')
+      return
+    }
+
+    const watchId = navigator.geolocation.watchPosition(
+      (position) => {
+        void recordLocationThrottled(
+          vendedorId,
+          position.coords.latitude,
+          position.coords.longitude,
+          position.coords.accuracy ?? null,
+          position.timestamp
+        )
+      },
+      (error) => {
+        console.error('Geolocation error:', error)
+        setTrackingError(error.message || 'Error al obtener ubicacion')
+      },
+      { enableHighAccuracy: true }
+    )
+    webWatchIdRef.current = watchId
+    setIsTracking(true)
+  }
+
+  const stopTracking = async () => {
+    setTrackingError(null)
+    if (Capacitor.isNativePlatform() && trackingId) {
+      try {
+        await BackgroundGeolocation.removeWatcher({ id: trackingId })
+      } catch (error) {
+        console.error('Error stopping tracking:', error)
+      }
+      setTrackingId(null)
+    }
+    if (webWatchIdRef.current !== null) {
+      navigator.geolocation.clearWatch(webWatchIdRef.current)
+      webWatchIdRef.current = null
+    }
+    setIsTracking(false)
+  }
+
   useEffect(() => {
+    if (!supabase) {
+      setLoading(false)
+      return
+    }
     fetchVendedores()
     fetchVisitas()
     fetchPedidos()
@@ -205,7 +373,19 @@ function App() {
     }
   }, [])
 
+  useEffect(() => {
+    return () => {
+      if (trackingId) {
+        BackgroundGeolocation.removeWatcher({ id: trackingId }).catch(() => {})
+      }
+      if (webWatchIdRef.current !== null) {
+        navigator.geolocation.clearWatch(webWatchIdRef.current)
+      }
+    }
+  }, [trackingId])
+
   const handleAddVisit = async () => {
+    if (!supabase) return
     try {
       const { error } = await supabase
         .from('visitas')
@@ -228,6 +408,7 @@ function App() {
   }
   
   const handleUpdateVisitStatus = async (id: number, estado: string) => {
+    if (!supabase) return
     try {
       const updateData: any = { estado }
       if (estado === 'completada') {
@@ -248,6 +429,7 @@ function App() {
   
   const handleDeleteVisit = async (id: number) => {
     if (!confirm('Esta seguro de eliminar esta visita?')) return
+    if (!supabase) return
     try {
       const { error } = await supabase
         .from('visitas')
@@ -262,6 +444,7 @@ function App() {
   }
   
   const handleAddOrder = async () => {
+    if (!supabase) return
     try {
       const { error } = await supabase
         .from('pedidos')
@@ -283,6 +466,7 @@ function App() {
   }
   
   const handleUpdateOrderStatus = async (id: number, estado: string) => {
+    if (!supabase) return
     try {
       const { error } = await supabase
         .from('pedidos')
@@ -298,6 +482,7 @@ function App() {
   
   const handleDeleteOrder = async (id: number) => {
     if (!confirm('Esta seguro de eliminar este pedido?')) return
+    if (!supabase) return
     try {
       const { error } = await supabase
         .from('pedidos')
@@ -313,6 +498,7 @@ function App() {
   
   const handleDeleteCliente = async (id: number) => {
     if (!confirm('Esta seguro de eliminar este cliente?')) return
+    if (!supabase) return
     try {
       const { error } = await supabase
         .from('clientes')
@@ -327,23 +513,22 @@ function App() {
   }
 
   const handleRequestLocationWithVendor = () => {
-    if (!selectedVendedorForLocation) return
+    const vendedorId = getSelectedVendedorId()
+    if (!vendedorId) return
+    if (!supabase) return
     
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         async (position) => {
           const { latitude, longitude } = position.coords
           try {
-            const { error } = await supabase
-              .from('vendedores')
-              .update({
-                latitud: latitude,
-                longitud: longitude,
-                ultima_actualizacion: new Date().toISOString()
-              })
-              .eq('id', parseInt(selectedVendedorForLocation))
-            
-            if (error) throw error
+            await insertUbicacion(
+              vendedorId,
+              latitude,
+              longitude,
+              position.coords.accuracy ?? null,
+              position.timestamp
+            )
             fetchVendedores()
             setIsSelectVendedorLocationDialogOpen(false)
             setSelectedVendedorForLocation('')
@@ -373,16 +558,37 @@ function App() {
     { id: 'pedidos', label: 'Pedidos', icon: ShoppingCart },
   ]
 
+  if (!isSupabaseConfigured) {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#f3f4f6', padding: '24px' }}>
+        <div style={{ width: '100%', maxWidth: '680px', backgroundColor: 'white', borderRadius: '12px', padding: '24px', boxShadow: '0 4px 12px rgba(0,0,0,0.08)' }}>
+          <h1 style={{ fontSize: '20px', fontWeight: 700, margin: '0 0 8px', color: '#111827' }}>Configuracion requerida</h1>
+          <p style={{ fontSize: '14px', color: '#4b5563', margin: '0 0 16px' }}>
+            Faltan las variables de entorno de Supabase. Agregalas en tu archivo .env y reinicia el servidor de desarrollo.
+          </p>
+          <div style={{ backgroundColor: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: '8px', padding: '12px', fontFamily: 'monospace', fontSize: '12px', whiteSpace: 'pre-wrap' }}>
+            VITE_SUPABASE_URL=tu_url_de_supabase{'\n'}VITE_SUPABASE_ANON_KEY=tu_anon_key
+          </div>
+          <p style={{ fontSize: '12px', color: '#6b7280', margin: '12px 0 0' }}>Archivo: .env</p>
+        </div>
+      </div>
+    )
+  }
+
   return (
-    <div style={{ height: '100vh', display: 'flex', overflow: 'hidden', backgroundColor: '#f3f4f6' }}>
-      <aside style={{ 
-        width: sidebarOpen ? '256px' : '0px', 
-        backgroundColor: '#1a1a2e', 
-        color: 'white', 
-        transition: 'width 0.3s',
-        overflow: 'hidden',
-        flexShrink: 0
-      }}>
+    <div className="app-shell" style={{ height: '100vh', display: 'flex', overflow: 'hidden', backgroundColor: '#f3f4f6' }}>
+      <aside
+        className="app-sidebar"
+        data-open={sidebarOpen ? 'true' : 'false'}
+        style={{ 
+          width: sidebarOpen ? '256px' : '0px', 
+          backgroundColor: '#1a1a2e', 
+          color: 'white', 
+          transition: 'width 0.3s',
+          overflow: 'hidden',
+          flexShrink: 0
+        }}
+      >
         <div style={{ padding: '16px', height: '100%', display: 'flex', flexDirection: 'column', width: '256px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '32px', paddingBottom: '16px', borderBottom: '1px solid #333' }}>
             <div style={{ backgroundColor: '#10b981', padding: '8px', borderRadius: '8px' }}>
@@ -485,8 +691,14 @@ function App() {
         </div>
       </aside>
 
+      <div
+        className="app-backdrop"
+        data-open={sidebarOpen ? 'true' : 'false'}
+        onClick={() => setSidebarOpen(false)}
+      />
+
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        <header style={{ backgroundColor: 'white', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+        <header className="app-header" style={{ backgroundColor: 'white', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
             <button 
               onClick={() => setSidebarOpen(!sidebarOpen)}
@@ -504,7 +716,7 @@ function App() {
           </Button>
         </header>
 
-        <main style={{ flex: 1, overflow: 'auto', padding: '24px' }}>
+        <main className="app-main" style={{ flex: 1, overflow: 'auto', padding: '24px' }}>
           {activeSection === 'visitas' && (
             <Card>
               <CardHeader className="flex flex-row items-center justify-between">
@@ -709,7 +921,36 @@ function App() {
         </main>
       </div>
 
-      <Dialog open={isSelectVendedorLocationDialogOpen} onOpenChange={setIsSelectVendedorLocationDialogOpen}>
+      <nav className="app-bottom-nav" role="navigation" aria-label="Secciones">
+        {menuItems.map(item => (
+          <button
+            key={item.id}
+            onClick={() => setActiveSection(item.id)}
+            className="app-bottom-tab"
+            data-active={activeSection === item.id ? 'true' : 'false'}
+          >
+            <item.icon className="h-5 w-5" />
+            <span>{item.label}</span>
+          </button>
+        ))}
+        <button
+          onClick={() => setIsSelectVendedorLocationDialogOpen(true)}
+          className="app-bottom-tab app-bottom-action"
+        >
+          <MapPin className="h-5 w-5" />
+          <span>Ubicacion</span>
+        </button>
+      </nav>
+
+      <Dialog
+        open={isSelectVendedorLocationDialogOpen}
+        onOpenChange={(open) => {
+          setIsSelectVendedorLocationDialogOpen(open)
+          if (open) {
+            fetchVendedores()
+          }
+        }}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Seleccionar Vendedor para Registrar Ubicacion</DialogTitle>
@@ -720,17 +961,61 @@ function App() {
             </p>
             <div>
               <Label>Vendedor *</Label>
-              <Select value={selectedVendedorForLocation} onValueChange={setSelectedVendedorForLocation}>
+              <Select
+                value={selectedVendedorForLocation}
+                onValueChange={setSelectedVendedorForLocation}
+                disabled={isTracking}
+              >
                 <SelectTrigger>
                   <SelectValue placeholder="Seleccionar vendedor" />
                 </SelectTrigger>
                 <SelectContent>
-                  {vendedores.map(v => (
-                    <SelectItem key={v.id} value={v.id.toString()}>{v.nombre}</SelectItem>
-                  ))}
+                  {vendedores.length === 0 ? (
+                    <SelectItem value="__no_vendedores__" disabled>
+                      No hay vendedores registrados
+                    </SelectItem>
+                  ) : (
+                    vendedores.map(v => (
+                      <SelectItem key={v.id} value={v.id.toString()}>{v.nombre}</SelectItem>
+                    ))
+                  )}
                 </SelectContent>
               </Select>
             </div>
+            {vendedoresError ? (
+              <p className="text-sm text-red-600">{vendedoresError}</p>
+            ) : vendedores.length === 0 && !isFetchingVendedores ? (
+              <p className="text-sm text-gray-500">
+                No se encontraron vendedores en la tabla. Verifica tu conexion y permisos en Supabase.
+              </p>
+            ) : null}
+            {trackingError ? <p className="text-sm text-red-600">{trackingError}</p> : null}
+            <p className={`text-sm ${isTracking ? 'text-green-600' : 'text-gray-500'}`}>
+              {isTracking ? 'Seguimiento activo (cada 30s)' : 'Seguimiento detenido'}
+            </p>
+            {!Capacitor.isNativePlatform() && (
+              <p className="text-xs text-amber-600">
+                El seguimiento continuo solo funciona en la app instalada (Android/iOS).
+              </p>
+            )}
+            <Button variant="outline" size="sm" onClick={fetchVendedores} disabled={isFetchingVendedores}>
+              {isFetchingVendedores ? 'Actualizando...' : 'Recargar vendedores'}
+            </Button>
+            <Button
+              className="w-full"
+              onClick={startTracking}
+              disabled={!selectedVendedorForLocation || isTracking}
+            >
+              Iniciar Seguimiento (30s)
+            </Button>
+            <Button
+              className="w-full"
+              variant="outline"
+              onClick={stopTracking}
+              disabled={!isTracking}
+            >
+              Detener Seguimiento
+            </Button>
             <Button 
               className="w-full" 
               onClick={handleRequestLocationWithVendor} 
