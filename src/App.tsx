@@ -83,10 +83,25 @@ function App() {
   
   const [isVisitDialogOpen, setIsVisitDialogOpen] = useState(false)
   const [isOrderDialogOpen, setIsOrderDialogOpen] = useState(false)
+  const [isClienteDialogOpen, setIsClienteDialogOpen] = useState(false)
   const [isSelectVendedorLocationDialogOpen, setIsSelectVendedorLocationDialogOpen] = useState(false)
   const [selectedVendedorForLocation, setSelectedVendedorForLocation] = useState<string>('')
   const [isClienteDetailDialogOpen, setIsClienteDetailDialogOpen] = useState(false)
   const [selectedCliente, setSelectedCliente] = useState<Cliente | null>(null)
+  const [isGettingClienteLocation, setIsGettingClienteLocation] = useState(false)
+  
+  const [clienteForm, setClienteForm] = useState({
+    vendedor_id: '',
+    nombre: '',
+    direccion: '',
+    telefono: '',
+    notas: '',
+    latitud: '',
+    longitud: '',
+    tipo_animal: '',
+    cantidad_animales: '',
+    administracion: ''
+  })
   
   const [visitForm, setVisitForm] = useState({
     vendedor_id: '',
@@ -508,6 +523,77 @@ function App() {
     }
   }
 
+  const handleGetClienteLocation = () => {
+    setIsGettingClienteLocation(true)
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const { latitude, longitude } = position.coords
+          setClienteForm(prev => ({
+            ...prev,
+            latitud: latitude.toString(),
+            longitud: longitude.toString()
+          }))
+          setIsGettingClienteLocation(false)
+          alert('Ubicacion capturada exitosamente')
+        },
+        (error) => {
+          console.error('Error getting location:', error)
+          setIsGettingClienteLocation(false)
+          alert('No se pudo obtener la ubicacion. Por favor, verifique los permisos de ubicacion.')
+        },
+        { enableHighAccuracy: true }
+      )
+    } else {
+      setIsGettingClienteLocation(false)
+      alert('La geolocalizacion no esta soportada en este navegador.')
+    }
+  }
+
+  const handleAddCliente = async () => {
+    if (!clienteForm.vendedor_id || !clienteForm.nombre || !clienteForm.latitud || !clienteForm.longitud) {
+      alert('Por favor complete los campos requeridos: Vendedor, Nombre y Ubicacion')
+      return
+    }
+    if (!supabase) return
+    try {
+      const { error } = await supabase
+        .from('clientes')
+        .insert([{
+          vendedor_id: parseInt(clienteForm.vendedor_id),
+          nombre: clienteForm.nombre,
+          direccion: clienteForm.direccion || null,
+          telefono: clienteForm.telefono || null,
+          notas: clienteForm.notas || null,
+          latitud: parseFloat(clienteForm.latitud),
+          longitud: parseFloat(clienteForm.longitud),
+          tipo_animal: clienteForm.tipo_animal || null,
+          cantidad_animales: clienteForm.cantidad_animales ? parseInt(clienteForm.cantidad_animales) : null,
+          administracion: clienteForm.administracion || null
+        }])
+      
+      if (error) throw error
+      setClienteForm({
+        vendedor_id: '',
+        nombre: '',
+        direccion: '',
+        telefono: '',
+        notas: '',
+        latitud: '',
+        longitud: '',
+        tipo_animal: '',
+        cantidad_animales: '',
+        administracion: ''
+      })
+      setIsClienteDialogOpen(false)
+      fetchClientes()
+      alert('Cliente registrado exitosamente')
+    } catch (error) {
+      console.error('Error adding cliente:', error)
+      alert('Error al registrar el cliente')
+    }
+  }
+
   const handleRequestLocationWithVendor = () => {
     const vendedorId = getSelectedVendedorId()
     if (!vendedorId) return
@@ -883,8 +969,96 @@ function App() {
 
           {activeSection === 'clientes' && (
             <Card>
-              <CardHeader>
+              <CardHeader className="flex flex-row items-center justify-between">
                 <CardTitle>Clientes Registrados</CardTitle>
+                <Dialog open={isClienteDialogOpen} onOpenChange={setIsClienteDialogOpen}>
+                  <DialogTrigger asChild>
+                    <Button><Plus className="h-4 w-4 mr-2" />Nuevo Cliente</Button>
+                  </DialogTrigger>
+                  <DialogContent className="max-h-[90vh] overflow-y-auto">
+                    <DialogHeader>
+                      <DialogTitle>Registrar Nuevo Cliente</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-4">
+                      <div>
+                        <Label>Vendedor *</Label>
+                        <Select value={clienteForm.vendedor_id} onValueChange={(v) => setClienteForm({...clienteForm, vendedor_id: v})}>
+                          <SelectTrigger><SelectValue placeholder="Seleccionar vendedor" /></SelectTrigger>
+                          <SelectContent>
+                            {vendedores.map(p => (
+                              <SelectItem key={p.id} value={p.id.toString()}>{p.nombre}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div>
+                        <Label>Nombre del Cliente *</Label>
+                        <Input value={clienteForm.nombre} onChange={(e) => setClienteForm({...clienteForm, nombre: e.target.value})} />
+                      </div>
+                      <div>
+                        <Label>Telefono</Label>
+                        <Input value={clienteForm.telefono} onChange={(e) => setClienteForm({...clienteForm, telefono: e.target.value})} />
+                      </div>
+                      <div>
+                        <Label>Direccion</Label>
+                        <Input value={clienteForm.direccion} onChange={(e) => setClienteForm({...clienteForm, direccion: e.target.value})} />
+                      </div>
+                      <div>
+                        <Label>Tipo de Animal</Label>
+                        <Select value={clienteForm.tipo_animal} onValueChange={(v) => setClienteForm({...clienteForm, tipo_animal: v})}>
+                          <SelectTrigger><SelectValue placeholder="Seleccionar tipo" /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="ganado_bovino">Ganado Bovino</SelectItem>
+                            <SelectItem value="ganado_porcino">Ganado Porcino</SelectItem>
+                            <SelectItem value="aves">Aves (Pollos/Gallinas)</SelectItem>
+                            <SelectItem value="caprino">Caprino (Cabras)</SelectItem>
+                            <SelectItem value="ovino">Ovino (Ovejas)</SelectItem>
+                            <SelectItem value="equino">Equino (Caballos)</SelectItem>
+                            <SelectItem value="peces">Peces</SelectItem>
+                            <SelectItem value="otro">Otro</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div>
+                        <Label>Cantidad de Animales</Label>
+                        <Input type="number" value={clienteForm.cantidad_animales} onChange={(e) => setClienteForm({...clienteForm, cantidad_animales: e.target.value})} />
+                      </div>
+                      <div>
+                        <Label>Administracion</Label>
+                        <Select value={clienteForm.administracion} onValueChange={(v) => setClienteForm({...clienteForm, administracion: v})}>
+                          <SelectTrigger><SelectValue placeholder="Seleccionar" /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="propia">Lo administra el mismo</SelectItem>
+                            <SelectItem value="delegada">Delega a alguien mas</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div>
+                        <Label>Notas</Label>
+                        <Input value={clienteForm.notas} onChange={(e) => setClienteForm({...clienteForm, notas: e.target.value})} />
+                      </div>
+                      <div className="border rounded-lg p-3 bg-gray-50">
+                        <Label className="mb-2 block">Ubicacion del Cliente *</Label>
+                        <Button 
+                          type="button" 
+                          variant="outline" 
+                          className="w-full mb-2"
+                          onClick={handleGetClienteLocation}
+                          disabled={isGettingClienteLocation}
+                        >
+                          <MapPin className="h-4 w-4 mr-2" />
+                          {isGettingClienteLocation ? 'Obteniendo ubicacion...' : 'Capturar Ubicacion GPS'}
+                        </Button>
+                        {clienteForm.latitud && clienteForm.longitud && (
+                          <p className="text-sm text-green-600 text-center">
+                            Ubicacion: {parseFloat(clienteForm.latitud).toFixed(6)}, {parseFloat(clienteForm.longitud).toFixed(6)}
+                          </p>
+                        )}
+                      </div>
+                      <Button className="w-full" onClick={handleAddCliente}>Registrar Cliente</Button>
+                    </div>
+                  </DialogContent>
+                </Dialog>
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
