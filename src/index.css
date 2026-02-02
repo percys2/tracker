@@ -1,128 +1,108 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
 @layer base {
   :root {
-    --radius: 0.5rem
-  ;
-    --sidebar-background: 0 0% 98%;
-    --sidebar-foreground: 240 5.3% 26.1%;
-    --sidebar-primary: 240 5.9% 10%;
-    --sidebar-primary-foreground: 0 0% 98%;
-    --sidebar-accent: 240 4.8% 95.9%;
-    --sidebar-accent-foreground: 240 5.9% 10%;
-    --sidebar-border: 220 13% 91%;
-    --sidebar-ring: 217.2 91.2% 59.8%}
-  .dark {
-    --sidebar-background: 240 5.9% 10%;
-    --sidebar-foreground: 240 4.8% 95.9%;
-    --sidebar-primary: 224.3 76.3% 48%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 240 3.7% 15.9%;
-    --sidebar-accent-foreground: 240 4.8% 95.9%;
-    --sidebar-border: 240 3.7% 15.9%;
-    --sidebar-ring: 217.2 91.2% 59.8%
+    --radius: 0.5rem;
   }
 }
 
-.app-backdrop {
-  display: none;
+.mobile-app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  height: 100dvh;
+  background-color: #f3f4f6;
+  overflow: hidden;
 }
 
-.app-bottom-nav {
-  display: none;
+.mobile-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+  color: white;
+  flex-shrink: 0;
 }
 
-@media (max-width: 768px) {
-  .app-shell {
-    position: relative;
-  }
+.mobile-header-content {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
 
-  .app-sidebar {
-    position: fixed;
-    top: 0;
-    left: 0;
-    height: 100vh;
-    width: min(80vw, 320px) !important;
-    transform: translateX(-100%);
-    transition: transform 0.3s ease !important;
-    z-index: 50;
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
-  }
+.mobile-header-icon {
+  background-color: #10b981;
+  padding: 8px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
 
-  .app-sidebar[data-open="true"] {
-    transform: translateX(0);
-  }
+.mobile-header-title {
+  font-size: 18px;
+  font-weight: 600;
+  margin: 0;
+}
 
-  .app-sidebar > div {
-    width: 100% !important;
-  }
+.mobile-main {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 12px;
+  padding-bottom: calc(12px + 72px);
+  -webkit-overflow-scrolling: touch;
+}
 
-  .app-backdrop {
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.35);
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 0.3s ease;
-    display: block;
-    z-index: 40;
-  }
+.mobile-bottom-nav {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 68px;
+  padding: 8px 12px;
+  padding-bottom: max(8px, env(safe-area-inset-bottom));
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  z-index: 50;
+}
 
-  .app-backdrop[data-open="true"] {
-    opacity: 1;
-    pointer-events: auto;
-  }
+.mobile-nav-tab {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 8px 4px;
+  border: none;
+  background: transparent;
+  color: #94a3b8;
+  font-size: 11px;
+  font-weight: 500;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
 
-  .app-header {
-    padding: 10px 12px !important;
-  }
+.mobile-nav-tab:active {
+  transform: scale(0.95);
+}
 
-  .app-header h2 {
-    font-size: 16px !important;
-  }
+.mobile-nav-tab.active {
+  color: #10b981;
+  background: rgba(16, 185, 129, 0.15);
+}
 
-  .app-main {
-    padding: 12px !important;
-    padding-bottom: calc(12px + 72px) !important;
-  }
+.mobile-nav-tab.location-tab {
+  color: #f59e0b;
+}
 
-  .app-bottom-nav {
-    position: fixed;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    height: 64px;
-    padding: 6px 8px;
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 6px;
-    background: #0f172a;
-    border-top: 1px solid rgba(255, 255, 255, 0.08);
-    z-index: 45;
-  }
-
-  .app-bottom-tab {
-    border: none;
-    background: transparent;
-    color: #cbd5f5;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 4px;
-    font-size: 11px;
-    font-weight: 600;
-    border-radius: 10px;
-    padding: 6px 4px;
-  }
-
-  .app-bottom-tab[data-active="true"] {
-    color: #10b981;
-    background: rgba(16, 185, 129, 0.12);
-  }
-
-  .app-bottom-action {
-    color: #e2e8f0;
-  }
+.mobile-nav-tab.location-tab:active {
+  background: rgba(245, 158, 11, 0.15);
 }

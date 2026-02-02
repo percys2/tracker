@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { MapPin, Plus, Trash2, RefreshCw, ClipboardList, ShoppingCart, Menu, X, UserCheck } from 'lucide-react'
+import { MapPin, Plus, Trash2, RefreshCw, ClipboardList, ShoppingCart, UserCheck } from 'lucide-react'
 import { supabase, isSupabaseConfigured } from '@/lib/supabase'
 
 const BackgroundGeolocation = registerPlugin<BackgroundGeolocationPlugin>('BackgroundGeolocation')
@@ -79,7 +79,6 @@ function App() {
   const lastSentAtRef = useRef<number>(0)
   const webWatchIdRef = useRef<number | null>(null)
   const [activeSection, setActiveSection] = useState('clientes')
-  const [sidebarOpen, setSidebarOpen] = useState(true)
   
   const [isVisitDialogOpen, setIsVisitDialogOpen] = useState(false)
   const [isOrderDialogOpen, setIsOrderDialogOpen] = useState(false)
@@ -658,147 +657,20 @@ function App() {
   }
 
   return (
-    <div className="app-shell" style={{ height: '100vh', display: 'flex', overflow: 'hidden', backgroundColor: '#f3f4f6' }}>
-      <aside
-        className="app-sidebar"
-        data-open={sidebarOpen ? 'true' : 'false'}
-        style={{ 
-          width: sidebarOpen ? '256px' : '0px', 
-          backgroundColor: '#1a1a2e', 
-          color: 'white', 
-          transition: 'width 0.3s',
-          overflow: 'hidden',
-          flexShrink: 0
-        }}
-      >
-        <div style={{ padding: '16px', height: '100%', display: 'flex', flexDirection: 'column', width: '256px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '32px', paddingBottom: '16px', borderBottom: '1px solid #333' }}>
-            <div style={{ backgroundColor: '#10b981', padding: '8px', borderRadius: '8px' }}>
-              <MapPin style={{ height: '24px', width: '24px', color: 'white' }} />
-            </div>
-            <div>
-              <h1 style={{ fontWeight: 'bold', fontSize: '18px', color: 'white', margin: 0 }}>App Vendedores</h1>
-              <p style={{ color: '#9ca3af', fontSize: '12px', margin: 0 }}>Nicaragua</p>
-            </div>
+    <div className="mobile-app">
+      <header className="mobile-header">
+        <div className="mobile-header-content">
+          <div className="mobile-header-icon">
+            <MapPin className="h-5 w-5" />
           </div>
-          
-          <nav style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            {menuItems.map(item => (
-              <button
-                key={item.id}
-                onClick={() => setActiveSection(item.id)}
-                style={{
-                  width: '100%',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '12px',
-                  padding: '12px 16px',
-                  borderRadius: '8px',
-                  border: 'none',
-                  cursor: 'pointer',
-                  backgroundColor: activeSection === item.id ? '#10b981' : 'transparent',
-                  color: 'white',
-                  fontSize: '14px',
-                  fontWeight: 500,
-                  transition: 'background-color 0.2s'
-                }}
-                onMouseEnter={(e) => {
-                  if (activeSection !== item.id) {
-                    e.currentTarget.style.backgroundColor = '#2d2d44'
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (activeSection !== item.id) {
-                    e.currentTarget.style.backgroundColor = 'transparent'
-                  }
-                }}
-              >
-                <item.icon style={{ height: '20px', width: '20px' }} />
-                <span>{item.label}</span>
-              </button>
-            ))}
-          </nav>
-          
-          <div style={{ marginTop: '16px' }}>
-            <button
-              onClick={() => setIsSelectVendedorLocationDialogOpen(true)}
-              style={{
-                width: '100%',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '12px',
-                padding: '12px 16px',
-                borderRadius: '8px',
-                border: '2px dashed #10b981',
-                cursor: 'pointer',
-                backgroundColor: 'transparent',
-                color: '#10b981',
-                fontSize: '14px',
-                fontWeight: 500,
-                transition: 'background-color 0.2s'
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor = 'rgba(16, 185, 129, 0.1)'
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = 'transparent'
-              }}
-            >
-              <MapPin style={{ height: '20px', width: '20px' }} />
-              <span>Registrar Ubicacion</span>
-            </button>
-          </div>
-          
-          <div style={{ marginTop: 'auto', padding: '16px', backgroundColor: '#16213e', borderRadius: '8px' }}>
-            <h3 style={{ fontWeight: 600, marginBottom: '12px', color: 'white', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Estadisticas</h3>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', fontSize: '14px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ color: '#9ca3af' }}>Vendedores:</span>
-                <span style={{ fontWeight: 'bold', color: 'white', backgroundColor: '#2d2d44', padding: '4px 8px', borderRadius: '4px' }}>{vendedores.length}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ color: '#9ca3af' }}>Activos:</span>
-                <span style={{ fontWeight: 'bold', color: '#10b981', backgroundColor: '#2d2d44', padding: '4px 8px', borderRadius: '4px' }}>{vendedoresActivos.length}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ color: '#9ca3af' }}>Visitas:</span>
-                <span style={{ fontWeight: 'bold', color: 'white', backgroundColor: '#2d2d44', padding: '4px 8px', borderRadius: '4px' }}>{visitas.length}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ color: '#9ca3af' }}>Ventas:</span>
-                <span style={{ fontWeight: 'bold', color: '#f59e0b', backgroundColor: '#2d2d44', padding: '4px 8px', borderRadius: '4px' }}>C${totalVentas.toFixed(0)}</span>
-              </div>
-            </div>
-          </div>
+          <h1 className="mobile-header-title">{menuItems.find(m => m.id === activeSection)?.label}</h1>
         </div>
-      </aside>
+        <Button variant="ghost" size="sm" onClick={() => { fetchVendedores(); fetchVisitas(); fetchPedidos(); fetchClientes(); }}>
+          <RefreshCw className="h-4 w-4" />
+        </Button>
+      </header>
 
-      <div
-        className="app-backdrop"
-        data-open={sidebarOpen ? 'true' : 'false'}
-        onClick={() => setSidebarOpen(false)}
-      />
-
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        <header className="app-header" style={{ backgroundColor: 'white', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-            <button 
-              onClick={() => setSidebarOpen(!sidebarOpen)}
-              style={{ padding: '8px', border: 'none', backgroundColor: 'transparent', cursor: 'pointer', borderRadius: '8px' }}
-            >
-              {sidebarOpen ? <X style={{ height: '20px', width: '20px', color: '#4b5563' }} /> : <Menu style={{ height: '20px', width: '20px', color: '#4b5563' }} />}
-            </button>
-            <h2 style={{ fontSize: '20px', fontWeight: 600, color: '#1f2937', margin: 0 }}>
-              {menuItems.find(m => m.id === activeSection)?.label}
-            </h2>
-          </div>
-          <Button variant="outline" size="sm" onClick={() => { fetchVendedores(); fetchVisitas(); fetchPedidos(); fetchClientes(); }}>
-            <RefreshCw className="h-4 w-4 mr-2" />
-            Actualizar
-          </Button>
-        </header>
-
-        <main className="app-main" style={{ flex: 1, overflow: 'auto', padding: '24px' }}>
+      <main className="mobile-main">
           {activeSection === 'visitas' && (
             <Card>
               <CardHeader className="flex flex-row items-center justify-between">
@@ -1089,15 +961,13 @@ function App() {
             </Card>
           )}
         </main>
-      </div>
 
-      <nav className="app-bottom-nav" role="navigation" aria-label="Secciones">
+      <nav className="mobile-bottom-nav">
         {menuItems.map(item => (
           <button
             key={item.id}
             onClick={() => setActiveSection(item.id)}
-            className="app-bottom-tab"
-            data-active={activeSection === item.id ? 'true' : 'false'}
+            className={`mobile-nav-tab ${activeSection === item.id ? 'active' : ''}`}
           >
             <item.icon className="h-5 w-5" />
             <span>{item.label}</span>
@@ -1105,7 +975,7 @@ function App() {
         ))}
         <button
           onClick={() => setIsSelectVendedorLocationDialogOpen(true)}
-          className="app-bottom-tab app-bottom-action"
+          className="mobile-nav-tab location-tab"
         >
           <MapPin className="h-5 w-5" />
           <span>Ubicacion</span>
