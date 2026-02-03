@@ -84,7 +84,11 @@ function App() {
   const [isOrderDialogOpen, setIsOrderDialogOpen] = useState(false)
   const [isClienteDialogOpen, setIsClienteDialogOpen] = useState(false)
   const [isSelectVendedorLocationDialogOpen, setIsSelectVendedorLocationDialogOpen] = useState(false)
-  const [selectedVendedorForLocation, setSelectedVendedorForLocation] = useState<string>('')
+  const [selectedVendedorForLocation, setSelectedVendedorForLocation] = useState<string>(() => {
+    // Cargar vendedor guardado de localStorage
+    const saved = localStorage.getItem('selectedVendedorId')
+    return saved || ''
+  })
   const [isClienteDetailDialogOpen, setIsClienteDetailDialogOpen] = useState(false)
   const [selectedCliente, setSelectedCliente] = useState<Cliente | null>(null)
   const [isGettingClienteLocation, setIsGettingClienteLocation] = useState(false)
@@ -136,7 +140,7 @@ function App() {
           ? error.message
           : typeof error === 'string'
             ? error
-            : JSON.stringify(error)
+            : 'Error desconocido'
       setVendedoresError(errorMessage || 'Error al cargar vendedores')
     } finally {
       setIsFetchingVendedores(false)
@@ -245,19 +249,21 @@ function App() {
           ? error.message
           : typeof error === 'string'
             ? error
-            : JSON.stringify(error)
+            : 'Error desconocido'
       setTrackingError(errorMessage || 'Error al guardar ubicacion')
     }
   }
 
-  const startTracking = async () => {
+  const startTracking = async (vendedorIdOverride?: number) => {
     if (!supabase) return
     if (isTracking) return
-    const vendedorId = getSelectedVendedorId()
+    const vendedorId = vendedorIdOverride ?? getSelectedVendedorId()
     if (!vendedorId) {
       setTrackingError('Seleccione un vendedor valido')
       return
     }
+    // Guardar vendedor seleccionado en localStorage
+    localStorage.setItem('selectedVendedorId', vendedorId.toString())
     setTrackingError(null)
     lastSentAtRef.current = 0
 
@@ -337,6 +343,24 @@ function App() {
     }
     setIsTracking(false)
   }
+
+  // Auto-iniciar rastreo cuando la app abre si hay un vendedor guardado
+  const autoStartAttemptedRef = useRef(false)
+  useEffect(() => {
+    if (autoStartAttemptedRef.current) return
+    autoStartAttemptedRef.current = true
+    
+    const savedVendedorId = localStorage.getItem('selectedVendedorId')
+    if (savedVendedorId && Capacitor.isNativePlatform()) {
+      const vendedorId = parseInt(savedVendedorId)
+      if (!Number.isNaN(vendedorId)) {
+        // Esperar un poco para que Supabase se inicialice
+        setTimeout(() => {
+          startTracking(vendedorId)
+        }, 1000)
+      }
+    }
+  }, [])
 
   useEffect(() => {
     const client = supabase
@@ -629,9 +653,6 @@ function App() {
       alert('La geolocalizacion no esta soportada en este navegador.')
     }
   }
-
-  const vendedoresActivos = vendedores.filter(p => p.estado === 'activo')
-  const totalVentas = pedidos.reduce((sum, o) => sum + (o.monto_total || 0), 0)
 
   const menuItems = [
     { id: 'clientes', label: 'Clientes', icon: UserCheck },
@@ -937,21 +958,18 @@ function App() {
                   {clientes.map(cliente => (
                     <div key={cliente.id} className="p-4 border rounded-lg">
                       <div className="flex justify-between items-start">
-                        <div 
-                          className="cursor-pointer flex-1"
-                          onClick={() => {
-                            setSelectedCliente(cliente)
-                            setIsClienteDetailDialogOpen(true)
-                          }}
-                        >
-                          <p className="font-semibold">{cliente.nombre}</p>
-                          <p className="text-sm text-gray-500">{cliente.direccion}</p>
-                          <p className="text-sm text-gray-500">{cliente.telefono}</p>
-                          <p className="text-xs text-gray-400">Registrado por: {cliente.nombre_vendedor}</p>
-                        </div>
-                        <Button variant="ghost" size="sm" onClick={() => handleDeleteCliente(cliente.id)}>
-                          <Trash2 className="h-4 w-4 text-red-500" />
-                        </Button>
+                          <div 
+                            className="cursor-pointer flex-1"
+                            onClick={() => {
+                              setSelectedCliente(cliente)
+                              setIsClienteDetailDialogOpen(true)
+                            }}
+                          >
+                            <p className="font-semibold">{cliente.nombre}</p>
+                            <p className="text-sm text-gray-500">{cliente.direccion}</p>
+                            <p className="text-sm text-gray-500">{cliente.telefono}</p>
+                            <p className="text-xs text-gray-400">Registrado por: {cliente.nombre_vendedor}</p>
+                          </div>
                       </div>
                     </div>
                   ))}
